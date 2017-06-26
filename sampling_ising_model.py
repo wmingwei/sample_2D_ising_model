@@ -6,66 +6,65 @@ import multiprocessing
 
 Size = 40
 J = 1
+H_ext = 0.1
 
-def energy(field, J):
+def energy(field, J = J, H_ext = H_ext):
     energy = 0.0
     size = len(field)
     for x in range(size):
         for y in range(size):
             for dx, dy in [(-1,0), (1,0), (0,-1), (0,1)]:
-                energy += - J * field[(x + dx)%size][(y + dy)%size] * field[x][y]
+                energy += - J * field[(x + dx)%size][(y + dy)%size] * field[x][y] - H_ext * field[x][y] * 4
     
     energy = energy / 4.0
     return energy
 
 
-def specific_heat(samples, temp, J, parallel = False):
+def specific_heat(samples, temp, J = J, H_ext = H_ext, parallel = False):
     
     samples_energy = []
     if not parallel:
         for sample in samples:
-            samples_energy.append(energy(sample))
+            samples_energy.append(energy(sample , J = J, H_ext = H_ext))
     else:
         num_cores = multiprocessing.cpu_count()
-        samples_energy = Parallel(n_jobs=num_cores)(delayed(energy)(field = samples[i]) for i in range(len(samples)))
+        samples_energy = Parallel(n_jobs=num_cores)(delayed(energy)(field = samples[i], J = J, H_ext = H_ext) for i in range(len(samples)))
         
     samples_energy = np.array(samples_energy)
     
     return 1/temp**2*((samples_energy**2).mean()-(samples_energy.mean())**2)
 
-def spin_direction(field, x, y, Temp, J):
-    energy = 0.0
+def spin_direction(field, x, y, Temp, J = J, H_ext = H_ext):
+    d_energy = 0.0
     size = len(field)
     for dx, dy in [(-1,0), (1,0), (0,-1), (0,1)]:
-        energy += - J * field[(x + dx)%size][(y + dy)%size]
-
-    if Temp == 0:
-        p = (np.sign(energy) + 1) * 0.5
-    else:
-        p = 1/(1+np.exp(2*(1/Temp)*energy))
+        d_energy += 2 * J * field[(x + dx)%size][(y + dy)%size] * field[x][y] + 2 * H_ext * field[x][y]
+        
+    p = np.exp(- d_energy / Temp)
+    
     if rand() <= p:
-        spin = 1
+        spin = -field[x][y]
     else:
-        spin = -1
+        spin = field[x][y]
     return spin
 
 
 
-def run_gibbs_sampling(field, Temp, seed, iternum, J):
+def run_gibbs_sampling(field, Temp, seed, iternum, J = J, H_ext = H_ext):
     np.random.seed(seed)
     for _ in range(iternum):
         lattice = [(x,y) for x in range(Size) for y in range(Size)]
         np.random.shuffle(lattice)
         for x, y in lattice:
-            field[x][y] = spin_direction(field, x, y, Temp, J = J)
+            field[x][y] = spin_direction(field, x, y, Temp, J = J, H_ext = H_ext)
             
             
-def sampling(temps, seed, J, iternum = 100):
+def sampling(temps, seed, J = J, H_ext = H_ext, iternum = 100):
     np.random.seed(seed)
     samples = []
     field = randint(2,size=(Size,Size))*2-1
     for temp in temps:
-        run_gibbs_sampling(field = field, Temp = temp, seed = seed, iternum = iternum, J = J)
+        run_gibbs_sampling(field = field, Temp = temp, seed = seed, iternum = iternum, J = J, H_ext = H_ext)
         samples.append(list(field.copy().reshape(Size*Size)) + [temp])
     return samples
 
@@ -73,7 +72,7 @@ def sampling(temps, seed, J, iternum = 100):
 def get_samples(temps, size = Size, num_samples = 1000, iternum = 100):
     num_cores = multiprocessing.cpu_count()
 
-    results = Parallel(n_jobs=num_cores)(delayed(sampling)(temps = temps, seed = None, J = J, iternum = iternum) for i in range(num_samples))
+    results = Parallel(n_jobs=num_cores)(delayed(sampling)(temps = temps, seed = None, J = J, H_ext = H_ext, iternum = iternum) for i in range(num_samples))
     results = np.array(results)
     results = results.reshape(num_samples*len(temps), size*size+1)
     np.savetxt('samples.csv', results, delimiter=",",fmt='%f')
