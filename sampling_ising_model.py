@@ -4,7 +4,6 @@ from joblib import Parallel, delayed
 import multiprocessing
 
 
-Size = 40
 J = 1
 H_ext = 0.1
 
@@ -14,18 +13,19 @@ def energy(field, J = J, H_ext = H_ext):
     for x in range(size):
         for y in range(size):
             for dx, dy in [(-1,0), (1,0), (0,-1), (0,1)]:
-                energy += - J * field[(x + dx)%size][(y + dy)%size] * field[x][y] - H_ext * field[x][y] * 4
+                energy += - J * field[(x + dx)%size][(y + dy)%size] * field[x][y] - H_ext * field[x][y] /2
     
-    energy = energy / 4.0
+    energy = energy / 2.0
     return energy
 
 
 def specific_heat(samples, temp, J = J, H_ext = H_ext, parallel = False):
-    
     samples_energy = []
+    
     if not parallel:
         for sample in samples:
-            samples_energy.append(energy(sample , J = J, H_ext = H_ext))
+            field = sample
+            samples_energy.append(energy(field , J = J, H_ext = H_ext))
     else:
         num_cores = multiprocessing.cpu_count()
         samples_energy = Parallel(n_jobs=num_cores)(delayed(energy)(field = samples[i], J = J, H_ext = H_ext) for i in range(len(samples)))
@@ -69,10 +69,10 @@ def sampling(temps, seed, J = J, H_ext = H_ext, iternum = 100):
     return samples
 
 
-def get_samples(temps, size = Size, num_samples = 1000, iternum = 100):
+def get_samples(temps, size = 16, num_samples = 1000, iternum = 100):
     num_cores = multiprocessing.cpu_count()
 
-    results = Parallel(n_jobs=num_cores)(delayed(sampling)(temps = temps, seed = None, J = J, H_ext = H_ext, iternum = iternum) for i in range(num_samples))
+    results = Parallel(n_jobs=num_cores)(delayed(sampling)(temps = temps, seed = None, J = J, H_ext = H_ext, iternum = iternum)  for i in range(num_samples))
     results = np.array(results)
     results = results.reshape(num_samples*len(temps), size*size+1)
     np.savetxt('samples.csv', results, delimiter=",",fmt='%f')
